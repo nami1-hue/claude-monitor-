@@ -4,16 +4,21 @@ Claude Code Monitor - Railway Deployment
 Web interface accessible from anywhere
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import os
+import hashlib
 from datetime import datetime
+from functools import wraps
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'claude-monitor-secret-key-change-this')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Authentication
+MONITOR_PASSWORD = os.environ.get('MONITOR_PASSWORD', 'changeme123')
 
 # Global state
 message_history = []
@@ -22,13 +27,54 @@ pending_commands = []  # Queue of commands from web to daemon
 MAX_HISTORY = 200
 
 
+def hash_password(password):
+    """Hash password with SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def requires_auth(f):
+    """Decorator to require authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @app.route('/')
 def index():
-    """Serve the main monitoring page"""
+    """Serve the main monitoring page or login"""
+    if not session.get('authenticated'):
+        return render_template('login.html')
     return render_template('monitor.html')
 
 
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Handle login"""
+    try:
+        data = request.json
+        password = data.get('password', '')
+
+        if password == MONITOR_PASSWORD:
+            session['authenticated'] = True
+            return jsonify({'status': 'ok'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Invalid password'}), 401
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle logout"""
+    session.clear()
+    return jsonify({'status': 'ok'})
+
+
 @app.route('/api/messages')
+@requires_auth
 def get_messages():
     """Get message history"""
     return jsonify(message_history)
@@ -76,6 +122,7 @@ def receive_message():
 
 
 @app.route('/api/approve', methods=['POST'])
+@requires_auth
 def approve_action():
     """Handle approval/rejection from web interface"""
     global pending_approval
@@ -135,6 +182,7 @@ def health():
 
 
 @app.route('/api/send_command', methods=['POST'])
+@requires_auth
 def send_command():
     """Receive command from web interface to execute on daemon"""
     try:
