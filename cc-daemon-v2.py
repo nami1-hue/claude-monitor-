@@ -96,6 +96,21 @@ class ClaudeSession:
             process.close()
 
             response = "".join(output).strip()
+
+            # Limpiar códigos ANSI/escape sequences
+            import re
+            # Limpiar códigos CSI (Control Sequence Introducer): ESC [ ... letter
+            response = re.sub(r'\x1b\[[0-9;?]*[a-zA-Z]', '', response)
+            # Limpiar códigos OSC (Operating System Command): ESC ] ... (terminated by BEL or ESC\)
+            response = re.sub(r'\x1b\][^\x07\x1b]*(\x07|\x1b\\)', '', response)
+            # Limpiar otros códigos de escape: ESC followed by single character
+            response = re.sub(r'\x1b[<=>()#]', '', response)
+            # Limpiar códigos con paréntesis angulares
+            response = re.sub(r'\[<[a-z]', '', response)
+            # Limpiar caracteres de control residuales
+            response = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', response)
+
+            response = response.strip()
             log(f"📥 Respuesta recibida ({len(response)} chars)", "SUCCESS")
             return response
 
