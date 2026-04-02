@@ -35,13 +35,14 @@ def log(message, level="INFO"):
 # ══════════════════════════════════════════════
 
 class ClaudeSession:
-    def __init__(self):
+    def __init__(self, working_dir=None):
         self.env = None
         self.running = False
+        self.working_dir = working_dir or os.getcwd()
 
     def start(self):
         """Prepara el entorno para ejecutar Claude Code"""
-        log("Preparando entorno de Claude Code...")
+        log(f"Preparando entorno de Claude Code en: {self.working_dir}")
 
         self.env = os.environ.copy()
         self.env.update({
@@ -64,12 +65,14 @@ class ClaudeSession:
             return None
 
         try:
-            log(f"📤 Ejecutando comando: {message[:50]}...")
+            log(f"📤 Ejecutando comando: {message[:80]}...")
 
-            # Ejecutar Claude como proceso separado para cada mensaje
+            # Usar bash con pipe (método confiable)
+            bash_cmd = f'cd {self.working_dir} && cat <<EOF | claude --print\n{message}\nEOF'
+
             process = pexpect.spawn(
-                'claude',
-                ['--print', 'ask', message],
+                'bash',
+                ['-c', bash_cmd],
                 env=self.env,
                 encoding='utf-8',
                 timeout=120  # 2 minutos timeout
@@ -112,8 +115,9 @@ class ClaudeSession:
 # ══════════════════════════════════════════════
 
 class ClaudeDaemon:
-    def __init__(self):
-        self.claude = ClaudeSession()
+    def __init__(self, working_dir=None):
+        self.working_dir = working_dir or os.getcwd()
+        self.claude = ClaudeSession(working_dir=self.working_dir)
         self.running = False
 
     def send_to_server(self, message, msg_type="system"):
@@ -164,6 +168,7 @@ class ClaudeDaemon:
         log("🚀 Claude Code Remote Daemon v2 - INICIANDO")
         log("=" * 60)
         log(f"Servidor: {SERVER_URL}")
+        log(f"Working dir: {self.working_dir}")
         log(f"Poll interval: {POLL_INTERVAL}s")
         log("")
 
@@ -172,7 +177,7 @@ class ClaudeDaemon:
             log("❌ No se pudo iniciar Claude Code. Abortando.", "ERROR")
             return
 
-        self.send_to_server("🤖 Daemon started - Ready to receive commands", "system")
+        self.send_to_server(f"🤖 Daemon v2 conectado - Directorio: {self.working_dir}", "system")
         self.running = True
 
         # Loop principal
@@ -221,8 +226,16 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Claude Code Remote Daemon v2')
+    parser.add_argument('--dir', type=str, help='Working directory for Claude session')
+    args = parser.parse_args()
+
+    working_dir = args.dir if args.dir else os.getcwd()
+
     # Registrar signal handlers
-    daemon = ClaudeDaemon()
+    daemon = ClaudeDaemon(working_dir=working_dir)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
