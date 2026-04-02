@@ -18,6 +18,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Global state
 message_history = []
 pending_approval = None
+pending_commands = []  # Queue of commands from web to daemon
 MAX_HISTORY = 200
 
 
@@ -131,6 +132,48 @@ def health():
         'messages': len(message_history),
         'pending_approval': pending_approval is not None
     })
+
+
+@app.route('/api/send_command', methods=['POST'])
+def send_command():
+    """Receive command from web interface to execute on daemon"""
+    try:
+        data = request.json
+        command = data.get('command', '').strip()
+
+        if not command:
+            return jsonify({'status': 'error', 'message': 'Empty command'}), 400
+
+        # Add to pending commands queue
+        cmd_id = len(pending_commands) + 1
+        cmd_obj = {
+            'id': cmd_id,
+            'command': command,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'pending'
+        }
+        pending_commands.append(cmd_obj)
+
+        # Notify daemon via socketio
+        socketio.emit('new_command', cmd_obj)
+
+        return jsonify({'status': 'ok', 'command_id': cmd_id})
+
+    except Exception as e:
+        print(f"Error sending command: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/poll_command', methods=['GET'])
+def poll_command():
+    """Daemon polls for pending commands"""
+    if pending_commands:
+        # Get first pending command
+        cmd = pending_commands.pop(0)
+        cmd['status'] = 'executing'
+        return jsonify({'status': 'ok', 'command': cmd})
+    else:
+        return jsonify({'status': 'no_commands'})
 
 
 @socketio.on('connect')

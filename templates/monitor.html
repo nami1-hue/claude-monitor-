@@ -74,6 +74,57 @@
             flex-direction: column;
         }
 
+        .command-input-section {
+            background: #f0f9ff;
+            border: 2px solid #3b82f6;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .command-input-section h3 {
+            margin: 0 0 15px 0;
+            color: #1e40af;
+            font-size: 18px;
+        }
+
+        .command-input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        #commandInput {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+        }
+
+        #commandInput:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn-send {
+            background: #3b82f6;
+            color: white;
+            padding: 12px 30px;
+            min-width: 120px;
+        }
+
+        .btn-send:hover {
+            background: #2563eb;
+        }
+
+        .hint {
+            margin: 10px 0 0 0;
+            font-size: 13px;
+            color: #64748b;
+        }
+
         .approval-banner {
             background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
             color: white;
@@ -235,12 +286,27 @@
         </div>
 
         <div class="main-content">
+            <!-- Command Input -->
+            <div class="command-input-section">
+                <h3>🎯 Ejecutar comando de Claude Code</h3>
+                <div class="command-input-wrapper">
+                    <input
+                        type="text"
+                        id="commandInput"
+                        placeholder='Ejemplo: cc ask "¿Cuál es la capital de Francia?"'
+                        onkeypress="if(event.key==='Enter') sendCommand()"
+                    />
+                    <button class="btn btn-send" onclick="sendCommand()">Enviar</button>
+                </div>
+                <p class="hint">💡 Escribe cualquier comando de Claude Code y se ejecutará en tu WSL</p>
+            </div>
+
             <div class="approval-banner" id="approvalBanner">
-                <h3>Acción requiere aprobación</h3>
+                <h3>⚠️ Acción requiere aprobación</h3>
                 <div class="approval-content" id="approvalContent"></div>
                 <div class="approval-buttons">
-                    <button class="btn btn-approve" onclick="handleApproval('y')">Aprobar</button>
-                    <button class="btn btn-reject" onclick="handleApproval('n')">Rechazar</button>
+                    <button class="btn btn-approve" onclick="handleApproval('y')">✅ Aprobar</button>
+                    <button class="btn btn-reject" onclick="handleApproval('n')">❌ Rechazar</button>
                 </div>
             </div>
 
@@ -249,8 +315,8 @@
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
-                    <h3>Esperando mensajes de Claude Code...</h3>
-                    <p>Ejecuta <code>ccmon</code> en tu terminal</p>
+                    <h3>Esperando comandos...</h3>
+                    <p>Inicia el daemon: <code>cc-daemon</code></p>
                 </div>
             </div>
         </div>
@@ -354,6 +420,47 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        async function sendCommand() {
+            const input = document.getElementById('commandInput');
+            const command = input.value.trim();
+
+            if (!command) {
+                alert('Por favor escribe un comando');
+                return;
+            }
+
+            try {
+                // Send command to server
+                const res = await fetch('/api/send_command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ command })
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'ok') {
+                    // Clear input
+                    input.value = '';
+
+                    // Show feedback
+                    addMessage({
+                        type: 'web',
+                        content: `📤 Comando enviado: ${command}`,
+                        timestamp: new Date().toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit', second: '2-digit'}),
+                        is_approval: false
+                    });
+                } else {
+                    alert('Error al enviar comando: ' + (data.message || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error sending command:', error);
+                alert('Error al enviar comando');
+            }
         }
 
         // Load initial messages
