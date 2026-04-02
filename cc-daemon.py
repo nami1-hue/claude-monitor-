@@ -52,6 +52,29 @@ def execute_command(command):
     """Execute Claude Code command and stream output"""
     global current_process, waiting_for_approval
 
+    # Replace 'cc' with 'claude' if command starts with 'cc '
+    if command.startswith('cc '):
+        command = 'claude ' + command[3:]
+    elif command == 'cc':
+        command = 'claude'
+
+    # Fix quotes: if command has ask/chat followed by unquoted text, quote it
+    import shlex
+    try:
+        parts = shlex.split(command)
+        if len(parts) >= 2 and parts[0] == 'claude':
+            # Add --print flag for non-interactive mode
+            if parts[1] in ['ask', 'chat']:
+                # Rebuild: claude --print ask "rest of text"
+                if len(parts) > 2:
+                    rest = ' '.join(parts[2:])
+                    command = f'claude --print {parts[1]} "{rest}"'
+                else:
+                    command = f'claude --print {parts[1]}'
+    except ValueError:
+        # If shlex fails, leave command as-is
+        pass
+
     print(f"📋 Executing: {command}")
     send_message('system', f'🚀 Executing command: {command}')
 
