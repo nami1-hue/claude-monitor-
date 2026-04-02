@@ -95,7 +95,7 @@ chmod +x ~/.local/bin/ccmon
 ### 3. Usar Claude Code con monitoreo
 
 ```bash
-# Desde tu laptop (red Bosch)
+# Desde tu laptop
 ccmon
 
 # O con un prompt
@@ -115,7 +115,7 @@ ccmon "ayúdame con mi código"
 ```
 ┌──────────────┐          HTTPS           ┌──────────────┐
 │   Laptop     │ ─────────────────────────▶│   Railway    │
-│ (Red Bosch)  │  ccmon envía mensajes     │   (Cloud)    │
+│  (Local)     │  daemon envía mensajes    │   (Cloud)    │
 └──────────────┘                           └──────────────┘
                                                    │
                                                    │ HTTPS
@@ -205,15 +205,22 @@ claude-monitor-railway/
 ## 🔐 Seguridad
 
 - ✅ Todo sobre HTTPS
+- ✅ Autenticación con contraseña
+- ✅ Sesiones seguras
 - ✅ CORS configurado
-- ⚠️ **IMPORTANTE**: Este servidor es público. Cualquiera con la URL puede ver tus mensajes.
 
-**Para producción seria:**
-- Agrega autenticación (usuario/password)
-- Usa tokens de acceso
-- Limita CORS a dominios específicos
+### Configurar contraseña
 
-Para uso personal/testing, está bien así.
+**IMPORTANTE:** Debes configurar una contraseña en Railway:
+
+1. Ve a tu proyecto en Railway
+2. Click en "Variables"
+3. Agrega: `MONITOR_PASSWORD` con tu contraseña segura
+4. Ejemplo: `MiClaudeSeguro2026!`
+
+Sin configurarla, usa la contraseña por defecto: `changeme123` (CÁMBIALA)
+
+Ver más detalles en: [SECURITY_SETUP.md](SECURITY_SETUP.md)
 
 ---
 

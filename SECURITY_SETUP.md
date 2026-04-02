@@ -34,7 +34,7 @@ changeme123
 
 ✅ **Buenas contraseñas:**
 - `MiProyecto2026!Seguro`
-- `Phd#Research*2026`
+- `SecureAccess*2026`
 - `Claude_Monitor_Xyz789!`
 
 ❌ **Malas contraseñas:**
