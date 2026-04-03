@@ -51,8 +51,8 @@ class ClaudePersistentSession:
         env = os.environ.copy()
         env.update({
             'ANTHROPIC_MODEL_PROVIDER': 'bedrock',
-            'ANTHROPIC_MODEL': 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0',
-            'AWS_PROFILE': 'AWSAdministratorAccess-754689903878',
+            'ANTHROPIC_MODEL': env.get('ANTHROPIC_MODEL', 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0'),
+            'AWS_PROFILE': env.get('AWS_PROFILE', 'hc-qa-admin'),
             'AWS_REGION': 'eu-central-1',
             'NODE_TLS_REJECT_UNAUTHORIZED': '0',
             'TERM': 'xterm-256color'
@@ -62,13 +62,16 @@ class ClaudePersistentSession:
             # Iniciar Claude en modo INTERACTIVO (sin --print)
             self.process = pexpect.spawn(
                 'bash',
-                ['-c', f'cd {self.working_dir} && claude'],
+                ['-c', f'cd {self.working_dir} && TERM=dumb claude'],
                 env=env,
                 encoding='utf-8',
                 timeout=300,
                 maxread=50000,
                 dimensions=(100, 200)
             )
+
+            # Desabilitar raw mode para evitar códigos ANSI problemáticos
+            self.process.setecho(False)
 
             log("⏳ Esperando prompt inicial de Claude...")
 
@@ -176,10 +179,13 @@ class ClaudePersistentSession:
 
                 response = "".join(response_lines).strip()
 
-                # Limpiar códigos ANSI
+                # Limpiar códigos ANSI agresivamente
                 import re
-                response = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', response)
-                response = re.sub(r'\x1b\][^\x07]*\x07', '', response)
+                response = re.sub(r'\x1b\[[0-9;?]*[a-zA-Z]', '', response)      # CSI sequences
+                response = re.sub(r'\x1b\][^\x07]*\x07', '', response)          # OSC sequences
+                response = re.sub(r'\[\?[0-9]+[hl]', '', response)              # Bracketed paste mode
+                response = re.sub(r'\x1b\[[;?]*[0-9;?]*[a-zA-Z]', '', response) # Más CSI
+                response = re.sub(r'[\[\?0-9]+[hl]', '', response)              # Bracket sequences
 
                 log(f"📥 Respuesta capturada ({len(response)} chars)", "SUCCESS")
                 return response
@@ -228,7 +234,12 @@ class ClaudeDaemon:
                 },
                 timeout=10
             )
-            return response.status_code == 200
+            if response.status_code == 200:
+                log(f"✅ Mensaje enviado al servidor ({len(message)} chars)")
+                return True
+            else:
+                log(f"⚠️  Servidor respondió con {response.status_code}: {response.text[:100]}", "WARNING")
+                return False
         except Exception as e:
             log(f"⚠️  Error enviando al servidor: {e}", "WARNING")
             return False

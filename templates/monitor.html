@@ -451,9 +451,17 @@
                 if (res.ok) {
                     projects = await res.json();
                     console.log('Projects loaded:', projects);
+                    console.log('Current project before selector update:', currentProject);
                     updateProjectSelector();
 
+                    // Ensure currentProject is set correctly
+                    if (!currentProject && projects.length > 0) {
+                        currentProject = projects[0].id;
+                        console.log('Set currentProject to:', currentProject);
+                    }
+
                     // Load messages for current project
+                    console.log('Loading messages for project:', currentProject);
                     loadMessagesForProject(currentProject);
                 }
             } catch (error) {
@@ -476,6 +484,7 @@
             });
 
             select.value = currentProject;
+            console.log('Project selector updated. Current project:', currentProject);
         }
 
         async function switchProject() {
@@ -549,8 +558,10 @@
 
         // Filter messages to show only for current project
         function addMessage(msg) {
-            // Si el mensaje tiene project_id y no es del proyecto actual, ignorar
-            if (msg.project_id && msg.project_id !== currentProject) {
+            // Si el mensaje tiene project_id, verificar que coincida con el proyecto actual
+            const msgProjectId = msg.project_id || 'default';
+            if (msgProjectId !== currentProject) {
+                console.log(`Ignorando mensaje de proyecto ${msgProjectId} (actual: ${currentProject})`);
                 return;
             }
 
