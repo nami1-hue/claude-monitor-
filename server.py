@@ -150,8 +150,11 @@ def receive_message():
             projects_data[project_id]['pending_approval'] = msg.copy()
             projects_data[project_id]['pending_approval']['resolved'] = False
 
-        # Broadcast to all connected clients
-        socketio.emit('new_message', msg)
+        # Broadcast to all connected clients viewing this project
+        # Use to emit to all clients (for now, they filter on frontend)
+        socketio.emit('new_message', msg, broadcast=True)
+
+        print(f"✅ Message emitted: {msg_type} from {project_id} - {len(content)} chars")
 
         return jsonify({'status': 'ok'})
 

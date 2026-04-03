@@ -373,18 +373,24 @@
         let projects = [];  // Lista de proyectos disponibles
 
         socket.on('connect', () => {
-            console.log('Connected to server');
+            console.log('✅ Connected to server - Socket ID:', socket.id);
             updateStatus('Conectado', true);
         });
 
         socket.on('disconnect', () => {
-            console.log('Disconnected from server');
+            console.log('❌ Disconnected from server');
             updateStatus('Desconectado', false);
         });
 
         socket.on('new_message', (msg) => {
-            console.log('New message:', msg);
+            console.log('📨 New message received:', msg);
+            console.log('   Current project:', currentProject);
+            console.log('   Message project:', msg.project_id);
             addMessage(msg);
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('❌ Connection error:', error);
         });
 
         socket.on('approval_resolved', (data) => {
