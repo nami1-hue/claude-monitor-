@@ -1,0 +1,18 @@
+{
+  "phd-research": {
+    "name": "PhD Research - 3D Unwrapping",
+    "path": "~/phd-research"
+  },
+  "hc-acop": {
+    "name": "HC ACOP Lambda Debug",
+    "path": "~/hc-acop-debug"
+  },
+  "claude-monitor": {
+    "name": "Claude Monitor Project",
+    "path": "~/claude-monitor-railway"
+  },
+  "default": {
+    "name": "Default Project",
+    "path": "~"
+  }
+}

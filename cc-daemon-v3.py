@@ -17,8 +17,9 @@ from datetime import datetime
 # ══════════════════════════════════════════════
 
 SERVER_URL = os.getenv("CLAUDE_MONITOR_URL", "https://eloquent-quietude-production.up.railway.app")
+PROJECT_ID = os.getenv("PROJECT_ID", "default")  # ID del proyecto que maneja este daemon
 POLL_INTERVAL = 2  # segundos
-LOG_FILE = "/tmp/cc-daemon-v3.log"
+LOG_FILE = f"/tmp/cc-daemon-v3-{PROJECT_ID}.log"
 
 # ══════════════════════════════════════════════
 # Logging
@@ -122,31 +123,36 @@ class ClaudePersistentSession:
                 # Esperar y capturar respuesta
                 log("⏳ Capturando respuesta...")
 
-                # Dar tiempo a que Claude empiece a procesar (importante!)
-                time.sleep(2)
+                # CRÍTICO: Dar MUCHO más tiempo a Claude para procesar
+                # Claude puede tardar 5-15 segundos en generar respuestas
+                log("   ⏰ Esperando que Claude procese (10s)...")
+                time.sleep(10)
 
                 response_lines = []
                 start_time = time.time()
                 timeout = 120  # 2 minutos
 
-                # Estrategia mejorada: leer hasta silencio prolongado
-                silence_threshold = 5  # 5 segundos de silencio (aumentado)
+                # Estrategia: leer hasta silencio prolongado
+                silence_threshold = 8  # 8 segundos de silencio
                 last_read_time = time.time()
                 total_read = 0
 
                 while True:
                     try:
-                        # Intentar leer con timeout más largo
-                        chunk = self.process.read_nonblocking(size=2000, timeout=1.0)
+                        # Leer con timeout más largo
+                        chunk = self.process.read_nonblocking(size=4000, timeout=1.5)
 
                         if chunk:
                             response_lines.append(chunk)
                             last_read_time = time.time()
                             total_read += len(chunk)
-                            log(f"   📥 Leídos {total_read} chars hasta ahora...")
+
+                            # Solo loguear cada 2000 chars para no spam
+                            if total_read % 2000 < 100:
+                                log(f"   📥 Capturando... {total_read} chars")
 
                         # Si llevamos más de silence_threshold sin leer Y ya tenemos contenido, terminamos
-                        if time.time() - last_read_time > silence_threshold and total_read > 0:
+                        if time.time() - last_read_time > silence_threshold and total_read > 100:
                             log(f"✅ Respuesta completa ({total_read} chars total)")
                             break
 
@@ -157,10 +163,10 @@ class ClaudePersistentSession:
 
                     except pexpect.TIMEOUT:
                         # Timeout del read_nonblocking
-                        if total_read > 0 and time.time() - last_read_time > silence_threshold:
+                        if total_read > 100 and time.time() - last_read_time > silence_threshold:
                             log(f"✅ Fin por timeout con contenido ({total_read} chars)")
                             break
-                        # Si no hay contenido aún, seguir esperando
+                        # Si no hay contenido sustancial aún, seguir esperando
                         continue
 
                     except pexpect.EOF:
@@ -215,6 +221,7 @@ class ClaudeDaemon:
             response = requests.post(
                 f"{SERVER_URL}/api/message",
                 json={
+                    "project_id": PROJECT_ID,
                     "type": msg_type,
                     "content": message,
                     "is_approval": False
@@ -231,6 +238,7 @@ class ClaudeDaemon:
         try:
             response = requests.get(
                 f"{SERVER_URL}/api/poll_command",
+                params={"project_id": PROJECT_ID},
                 timeout=5
             )
             if response.status_code == 200:
@@ -257,6 +265,7 @@ class ClaudeDaemon:
         log("🚀 Claude Code Remote Daemon v3 - SESIÓN PERSISTENTE")
         log("=" * 60)
         log(f"Servidor: {SERVER_URL}")
+        log(f"Proyecto: {PROJECT_ID}")
         log(f"Working dir: {self.working_dir}")
         log(f"Poll interval: {POLL_INTERVAL}s")
         log("")
@@ -266,7 +275,7 @@ class ClaudeDaemon:
             log("❌ No se pudo iniciar Claude Code. Abortando.", "ERROR")
             return
 
-        self.send_to_server(f"🤖 Daemon v3 conectado - Sesión persistente en: {self.working_dir}", "system")
+        self.send_to_server(f"🤖 Daemon v3 conectado - Proyecto: {PROJECT_ID} - Sesión persistente en: {self.working_dir}", "system")
         self.running = True
 
         # Loop principal
@@ -319,7 +328,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Claude Code Remote Daemon v3')
     parser.add_argument('--dir', type=str, help='Working directory for Claude session')
+    parser.add_argument('--project-id', type=str, default=os.getenv('PROJECT_ID', 'default'),
+                        help='Project ID for this daemon (default: PROJECT_ID env var or "default")')
     args = parser.parse_args()
+
+    # Override PROJECT_ID if provided via CLI
+    if args.project_id and args.project_id != 'default':
+        os.environ['PROJECT_ID'] = args.project_id
+        globals()['PROJECT_ID'] = args.project_id
 
     working_dir = args.dir if args.dir else os.getcwd()
 

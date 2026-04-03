@@ -20,10 +20,25 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Authentication
 MONITOR_PASSWORD = os.environ.get('MONITOR_PASSWORD', 'changeme123')
 
-# Global state
-message_history = []
-pending_approval = None
-pending_commands = []  # Queue of commands from web to daemon
+# Load projects from environment
+import json
+PROJECTS_JSON = os.environ.get('PROJECTS', '{"default": {"name": "Default", "path": "~"}}')
+try:
+    PROJECTS_CONFIG = json.loads(PROJECTS_JSON)
+except json.JSONDecodeError:
+    PROJECTS_CONFIG = {"default": {"name": "Default", "path": "~"}}
+
+# Global state - per project
+projects_data = {}
+for project_id, config in PROJECTS_CONFIG.items():
+    projects_data[project_id] = {
+        'config': config,
+        'message_history': [],
+        'pending_approval': None,
+        'pending_commands': [],
+        'connected_daemon': None
+    }
+
 MAX_HISTORY = 200
 
 
@@ -73,21 +88,45 @@ def logout():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/api/projects')
+@requires_auth
+def get_projects():
+    """Get list of available projects"""
+    projects_list = []
+    for project_id, data in projects_data.items():
+        projects_list.append({
+            'id': project_id,
+            'name': data['config'].get('name', project_id),
+            'path': data['config'].get('path', '~'),
+            'connected': data['connected_daemon'] is not None,
+            'messages': len(data['message_history'])
+        })
+    return jsonify(projects_list)
+
+
 @app.route('/api/messages')
 @requires_auth
 def get_messages():
-    """Get message history"""
-    return jsonify(message_history)
+    """Get message history for a project"""
+    project_id = request.args.get('project', 'default')
+    if project_id not in projects_data:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify(projects_data[project_id]['message_history'])
 
 
 @app.route('/api/message', methods=['POST'])
 def receive_message():
-    """Receive message from ccmon"""
+    """Receive message from daemon"""
     try:
         data = request.json
+        project_id = data.get('project_id', 'default')
         msg_type = data.get('type', 'claude')
         content = data.get('content', '')
         is_approval = data.get('is_approval', False)
+
+        # Validate project exists
+        if project_id not in projects_data:
+            return jsonify({'status': 'error', 'message': 'Project not found'}), 404
 
         # Create message
         timestamp = datetime.now().strftime('%H:%M:%S')
@@ -95,21 +134,21 @@ def receive_message():
             'type': msg_type,
             'content': content,
             'timestamp': timestamp,
-            'is_approval': is_approval
+            'is_approval': is_approval,
+            'project_id': project_id
         }
 
-        # Add to history
-        message_history.append(msg)
+        # Add to project history
+        projects_data[project_id]['message_history'].append(msg)
 
         # Keep only last MAX_HISTORY messages
-        if len(message_history) > MAX_HISTORY:
-            message_history[:] = message_history[-MAX_HISTORY:]
+        if len(projects_data[project_id]['message_history']) > MAX_HISTORY:
+            projects_data[project_id]['message_history'] = projects_data[project_id]['message_history'][-MAX_HISTORY:]
 
         # Set pending approval if needed
-        global pending_approval
         if is_approval:
-            pending_approval = msg.copy()
-            pending_approval['resolved'] = False
+            projects_data[project_id]['pending_approval'] = msg.copy()
+            projects_data[project_id]['pending_approval']['resolved'] = False
 
         # Broadcast to all connected clients
         socketio.emit('new_message', msg)
@@ -187,20 +226,25 @@ def send_command():
     """Receive command from web interface to execute on daemon"""
     try:
         data = request.json
+        project_id = data.get('project_id', 'default')
         command = data.get('command', '').strip()
 
         if not command:
             return jsonify({'status': 'error', 'message': 'Empty command'}), 400
 
+        if project_id not in projects_data:
+            return jsonify({'status': 'error', 'message': 'Project not found'}), 404
+
         # Add to pending commands queue
-        cmd_id = len(pending_commands) + 1
+        cmd_id = len(projects_data[project_id]['pending_commands']) + 1
         cmd_obj = {
             'id': cmd_id,
             'command': command,
             'timestamp': datetime.now().isoformat(),
-            'status': 'pending'
+            'status': 'pending',
+            'project_id': project_id
         }
-        pending_commands.append(cmd_obj)
+        projects_data[project_id]['pending_commands'].append(cmd_obj)
 
         # Notify daemon via socketio
         socketio.emit('new_command', cmd_obj)
@@ -215,9 +259,14 @@ def send_command():
 @app.route('/api/poll_command', methods=['GET'])
 def poll_command():
     """Daemon polls for pending commands"""
-    if pending_commands:
+    project_id = request.args.get('project_id', 'default')
+
+    if project_id not in projects_data:
+        return jsonify({'status': 'error', 'message': 'Project not found'}), 404
+
+    if projects_data[project_id]['pending_commands']:
         # Get first pending command
-        cmd = pending_commands.pop(0)
+        cmd = projects_data[project_id]['pending_commands'].pop(0)
         cmd['status'] = 'executing'
         return jsonify({'status': 'ok', 'command': cmd})
     else:

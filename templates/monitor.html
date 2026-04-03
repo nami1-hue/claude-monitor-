@@ -40,6 +40,40 @@
             color: #333;
         }
 
+        .project-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            margin: 0 20px;
+        }
+
+        .project-selector label {
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+        }
+
+        .project-selector select {
+            padding: 8px 12px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            min-width: 200px;
+        }
+
+        .project-selector select:hover {
+            border-color: #764ba2;
+        }
+
+        .project-status {
+            font-size: 12px;
+            color: #6b7280;
+            margin-left: 10px;
+        }
+
         .status {
             display: flex;
             align-items: center;
@@ -282,6 +316,13 @@
     <div class="container">
         <div class="header">
             <h1>Claude Code Monitor</h1>
+            <div class="project-selector">
+                <label for="projectSelect">📁 Proyecto:</label>
+                <select id="projectSelect" onchange="switchProject()">
+                    <option value="">Cargando proyectos...</option>
+                </select>
+                <span class="project-status" id="projectStatus"></span>
+            </div>
             <div class="status">
                 <div class="status-dot" id="statusDot"></div>
                 <span class="status-text" id="statusText">Conectando...</span>
@@ -328,6 +369,8 @@
     <script>
         const socket = io();
         let messages = [];
+        let currentProject = 'default';  // Project ID actual
+        let projects = [];  // Lista de proyectos disponibles
 
         socket.on('connect', () => {
             console.log('Connected to server');
@@ -355,35 +398,6 @@
 
             statusText.textContent = text;
             statusDot.style.background = connected ? '#10b981' : '#ef4444';
-        }
-
-        function addMessage(msg) {
-            const container = document.getElementById('messagesContainer');
-            const emptyState = container.querySelector('.empty-state');
-
-            if (emptyState) {
-                emptyState.remove();
-            }
-
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message' + (msg.is_approval ? ' approval' : '');
-            const cleanContent = cleanAnsiCodes(msg.content || '');
-            messageDiv.innerHTML = `
-                <div class="message-header">
-                    <span>${msg.type}</span>
-                    <span>${msg.timestamp}</span>
-                </div>
-                <div class="message-content">${escapeHtml(cleanContent)}</div>
-            `;
-
-            container.insertBefore(messageDiv, container.firstChild);
-
-            messages.push(msg);
-
-            // Show approval banner if needed
-            if (msg.is_approval) {
-                showApprovalBanner(msg.content);
-            }
         }
 
         function showApprovalBanner(content) {
@@ -430,6 +444,74 @@
             return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
         }
 
+        // Load projects and messages on page load
+        async function loadProjects() {
+            try {
+                const res = await fetch('/api/projects');
+                if (res.ok) {
+                    projects = await res.json();
+                    console.log('Projects loaded:', projects);
+                    updateProjectSelector();
+
+                    // Load messages for current project
+                    loadMessagesForProject(currentProject);
+                }
+            } catch (error) {
+                console.error('Error loading projects:', error);
+            }
+        }
+
+        function updateProjectSelector() {
+            const select = document.getElementById('projectSelect');
+            select.innerHTML = '';
+
+            projects.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project.id;
+                option.textContent = `${project.name} (${project.messages} msgs)`;
+                if (project.connected) {
+                    option.textContent += ' ✓';
+                }
+                select.appendChild(option);
+            });
+
+            select.value = currentProject;
+        }
+
+        async function switchProject() {
+            const select = document.getElementById('projectSelect');
+            currentProject = select.value;
+
+            // Clear messages
+            messages = [];
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = '<div class="empty-state">📭 Sin mensajes</div>';
+
+            // Load new project messages
+            loadMessagesForProject(currentProject);
+            updateProjectStatus();
+        }
+
+        async function loadMessagesForProject(projectId) {
+            try {
+                const res = await fetch(`/api/messages?project=${projectId}`);
+                if (res.ok) {
+                    const msgs = await res.json();
+                    msgs.forEach(msg => addMessage(msg));
+                }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+
+        function updateProjectStatus() {
+            const project = projects.find(p => p.id === currentProject);
+            if (project) {
+                const statusDiv = document.getElementById('projectStatus');
+                statusDiv.textContent = project.connected ? '🟢 Conectado' : '🔴 Desconectado';
+            }
+        }
+
         async function sendCommand() {
             const input = document.getElementById('commandInput');
             const command = input.value.trim();
@@ -440,28 +522,22 @@
             }
 
             try {
-                // Send command to server
+                // Send command to server with project_id
                 const res = await fetch('/api/send_command', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ command })
+                    body: JSON.stringify({
+                        command,
+                        project_id: currentProject
+                    })
                 });
 
                 const data = await res.json();
-
                 if (data.status === 'ok') {
-                    // Clear input
                     input.value = '';
-
-                    // Show feedback
-                    addMessage({
-                        type: 'web',
-                        content: `📤 Comando enviado: ${command}`,
-                        timestamp: new Date().toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit', second: '2-digit'}),
-                        is_approval: false
-                    });
+                    console.log('Command sent with ID:', data.command_id);
                 } else {
                     alert('Error al enviar comando: ' + (data.message || 'Unknown error'));
                 }
@@ -471,13 +547,43 @@
             }
         }
 
-        // Load initial messages
-        fetch('/api/messages')
-            .then(res => res.json())
-            .then(msgs => {
-                msgs.forEach(msg => addMessage(msg));
-            })
-            .catch(err => console.error('Error loading messages:', err));
+        // Filter messages to show only for current project
+        function addMessage(msg) {
+            // Si el mensaje tiene project_id y no es del proyecto actual, ignorar
+            if (msg.project_id && msg.project_id !== currentProject) {
+                return;
+            }
+
+            const container = document.getElementById('messagesContainer');
+            const emptyState = container.querySelector('.empty-state');
+
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message' + (msg.is_approval ? ' approval' : '');
+            const cleanContent = cleanAnsiCodes(msg.content || '');
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span>${msg.type}</span>
+                    <span>${msg.timestamp}</span>
+                </div>
+                <div class="message-content">${escapeHtml(cleanContent)}</div>
+            `;
+
+            container.insertBefore(messageDiv, container.firstChild);
+
+            messages.push(msg);
+
+            // Show approval banner if needed
+            if (msg.is_approval) {
+                showApprovalBanner(msg.content);
+            }
+        }
+
+        // Load projects on page load
+        window.addEventListener('load', loadProjects);
     </script>
 </body>
 </html>

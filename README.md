@@ -224,9 +224,51 @@ Ver más detalles en: [SECURITY_SETUP.md](SECURITY_SETUP.md)
 
 ---
 
+## 🎮 Multi-Proyecto (NEW!)
+
+Ahora puedes monitorear **múltiples proyectos simultáneamente** con daemons independientes.
+
+### ¿Qué es?
+
+- **Un servidor central** (en Railway) que maneja múltiples proyectos
+- **Múltiples daemons** (uno por proyecto, en tu máquina local)
+- **Una interfaz web** con selector de proyecto
+- **Isolamiento total** - cada proyecto maneja sus propios comandos y mensajes
+
+### Setup rápido
+
+1. **Configura proyectos en Railway** (variable `PROJECTS`):
+```json
+{
+  "phd-research": { "name": "PhD Research", "path": "~/phd-research" },
+  "hc-acop": { "name": "HC ACOP", "path": "~/hc-acop-debug" }
+}
+```
+
+2. **Instala daemon para cada proyecto**:
+```bash
+./install-daemon.sh phd-research ~/phd-research
+./install-daemon.sh hc-acop ~/hc-acop-debug
+```
+
+3. **Abre el monitor** y usa el selector de proyecto
+
+### Documentación completa
+
+Ver: [MULTI_PROJECT_SETUP.md](MULTI_PROJECT_SETUP.md)
+
+### Scripts disponibles
+
+- `./test-setup.sh` - Verifica que todo está configurado
+- `./install-daemon.sh` - Instala daemon para un proyecto
+- `PROJECTS_EXAMPLE.json` - Ejemplo de configuración
+
+---
+
 ## 🎉 ¡Listo!
 
 Ahora puedes:
 - Dejar la laptop trabajando
 - Ver desde tu celular lo que Claude hace
 - Aprobar/rechazar acciones desde cualquier lugar
+- **Monitorear múltiples proyectos en paralelo** ✨
