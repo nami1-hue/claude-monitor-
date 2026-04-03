@@ -15,7 +15,15 @@ from functools import wraps
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    ping_timeout=60,
+    ping_interval=25,
+    engineio_logger=False,
+    socketio_logger=False
+)
 
 # Authentication
 MONITOR_PASSWORD = os.environ.get('MONITOR_PASSWORD', 'changeme123')

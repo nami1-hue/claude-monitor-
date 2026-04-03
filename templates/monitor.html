@@ -367,7 +367,13 @@
     </div>
 
     <script>
-        const socket = io();
+        const socket = io({
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: 5,
+            transports: ['websocket', 'polling']
+        });
         let messages = [];
         let currentProject = 'default';  // Project ID actual
         let projects = [];  // Lista de proyectos disponibles
